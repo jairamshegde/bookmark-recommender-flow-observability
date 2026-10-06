@@ -20,6 +20,7 @@ class TurnError(Exception):
 @dataclass
 class Deps:
     call_json: Callable[..., Awaitable]
+    search_text: Callable[[str, str], Awaitable[str]]
     fetch_page: Callable[[str, int], Awaitable[PageContent]]
     fetch_many: Callable[[list[str], int], Awaitable[list[PageContent]]]
 
@@ -56,10 +57,12 @@ def build_graph(deps: Deps):
         return {"seed_profile": profile}
 
     async def search_candidates(state: State):
-        found = await deps.call_json(
-            prompts.SEARCH, prompts.search_input(state["seed_url"], state["seed_profile"]), CandidateList,
-            web_search=True,
-        )
+        # Two calls on purpose: DeepSeek's web search doesn't finish when asked for JSON,
+        # so it answers in plain text and a tool-free call structures that answer.
+        answer = await deps.search_text(prompts.SEARCH, prompts.search_input(state["seed_url"], state["seed_profile"]))
+        if not answer.strip():
+            raise TurnError("Web search returned no answer. Please try again.")
+        found = await deps.call_json(prompts.EXTRACT_CANDIDATES, answer, CandidateList)
         seen = {normalize_url(state["seed_url"])}
         candidates = []
         for c in found.candidates:

@@ -35,16 +35,24 @@ def extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-async def call_json(llm, instructions: str, input: str, schema: type[T], *, web_search: bool = False) -> T:
+async def search_text(llm, instructions: str, input: str) -> str:
+    """One DeepSeek web-search call; returns its plain-text answer ("" if it gave none).
+
+    Never asks for JSON and never retries: web-search calls asked for JSON ended without
+    a final message after ~13 searches and ~180k tokens (experiments/2026-10-06-*)."""
+    message = await llm.bind_tools([{"type": "web_search"}]).ainvoke([("system", instructions), ("human", input)])
+    return message.text
+
+
+async def call_json(llm, instructions: str, input: str, schema: type[T]) -> T:
     system = (
         f"{instructions}\n\nRespond with only a JSON object matching this JSON schema:\n"
         f"{json.dumps(schema.model_json_schema())}"
     )
-    runnable = llm.bind_tools([{"type": "web_search"}]) if web_search else llm
 
     prompt = input
     for _ in range(2):
-        message = await runnable.ainvoke([("system", system), ("human", prompt)])
+        message = await llm.ainvoke([("system", system), ("human", prompt)])
         try:
             return schema.model_validate_json(extract_json(message.text))
         except ValueError as e:  # pydantic's ValidationError is a ValueError too

@@ -8,6 +8,7 @@ from bookmark_recommender.models import Candidate, CandidateList, PageContent, S
 
 SEED = "https://seed.com/post"
 PROFILE = SeedProfile(topic="t", covers=["x"], does_not_cover=["y"], likely_intent="learn")
+SEARCH_ANSWER = "Here are pages I found: ..."
 A, B, C, D = "https://a.com/1", "https://b.com/2", "https://c.com/3", "https://d.com/4"
 
 
@@ -24,9 +25,11 @@ def verdict(score):
 
 
 class Fakes:
-    def __init__(self, candidates, scores, seed_ok=True, failed_fetches=(), failing_judges=()):
+    def __init__(self, candidates, scores, seed_ok=True, failed_fetches=(), failing_judges=(), search_answer=SEARCH_ANSWER):
         self.candidates, self.scores, self.seed_ok = candidates, scores, seed_ok
         self.failed_fetches, self.failing_judges = set(failed_fetches), set(failing_judges)
+        self.search_answer = search_answer
+        self.extract_inputs = []
         self.judge_inputs = []
 
     async def fetch_page(self, url, limit):
@@ -40,11 +43,14 @@ class Fakes:
     async def fetch_many(self, urls, limit):
         return [await self.fetch_page(u, limit) for u in urls]
 
-    async def call_json(self, instructions, input, schema, *, web_search=False):
+    async def search_text(self, instructions, input):
+        return self.search_answer
+
+    async def call_json(self, instructions, input, schema):
         if schema is SeedProfile:
             return PROFILE
         if schema is CandidateList:
-            assert web_search
+            self.extract_inputs.append(input)
             return CandidateList(candidates=self.candidates)
         self.judge_inputs.append(input)
         url = next(u for u in self.scores if u in input)
@@ -54,7 +60,8 @@ class Fakes:
 
 
 def run(fakes):
-    deps = Deps(call_json=fakes.call_json, fetch_page=fakes.fetch_page, fetch_many=fakes.fetch_many)
+    deps = Deps(call_json=fakes.call_json, search_text=fakes.search_text,
+                fetch_page=fakes.fetch_page, fetch_many=fakes.fetch_many)
     return asyncio.run(build_graph(deps).ainvoke({"seed_url": SEED, "reason": "because"}))
 
 
@@ -76,6 +83,19 @@ def test_filters_seed_duplicates_and_non_http_candidates():
     fakes = Fakes([cand(u) for u in (A, B, C, D)] + weird, SCORES)
     run(fakes)
     assert len(fakes.judge_inputs) == 4
+
+
+def test_search_answer_is_structured_by_a_separate_call():
+    fakes = Fakes([cand(u) for u in (A, B, C)], SCORES)
+    run(fakes)
+    assert fakes.extract_inputs == [SEARCH_ANSWER]
+
+
+def test_empty_search_answer_ends_turn():
+    fakes = Fakes([cand(A)], SCORES, search_answer="  ")
+    with pytest.raises(TurnError, match="no answer"):
+        run(fakes)
+    assert fakes.extract_inputs == []
 
 
 def test_seed_fetch_failure_ends_turn():

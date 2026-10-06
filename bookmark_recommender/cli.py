@@ -15,7 +15,7 @@ from rich.prompt import Prompt
 from . import config
 from .crawl import Crawler
 from .graph import Deps, TurnError, build_graph
-from .llm import LLMOutputError, call_json, make_llm
+from .llm import LLMOutputError, call_json, make_llm, search_text
 from .models import Judgment
 from .tracing import phoenix_reachable, setup_tracing
 
@@ -80,7 +80,10 @@ async def main() -> int:
     llm = make_llm(api_key)
     try:
         async with Crawler() as crawler:
-            app = build_graph(Deps(call_json=partial(call_json, llm), fetch_page=crawler.fetch_page, fetch_many=crawler.fetch_many))
+            app = build_graph(Deps(
+                call_json=partial(call_json, llm), search_text=partial(search_text, llm),
+                fetch_page=crawler.fetch_page, fetch_many=crawler.fetch_many,
+            ))
             while True:
                 seed_url = Prompt.ask("\n[b]Seed URL[/b] (empty or q to quit)", default="", show_default=False).strip()
                 if seed_url in ("", "q"):

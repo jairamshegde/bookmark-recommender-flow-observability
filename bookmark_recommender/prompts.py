@@ -25,6 +25,11 @@ def search_input(seed_url: str, profile: SeedProfile) -> str:
     return f"Bookmarked URL: {seed_url}\n\nProfile of the bookmark:\n{profile.model_dump_json(indent=2)}"
 
 
+EXTRACT_CANDIDATES = """Below is a web researcher's answer listing web pages it found.
+Extract every listed page as a candidate: url, title, snippet (what the page contains), why_found (which gap or intent it serves).
+Only use URLs that appear in the text. Do not add, guess or change URLs."""
+
+
 JUDGE = """You judge whether a candidate web page is worth recommending to a user, relative to a page they already bookmarked.
 Score three criteria from 1 to 5. For each criterion write the rationale (one sentence) first, then the score.
 

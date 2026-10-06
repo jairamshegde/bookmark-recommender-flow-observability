@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import BaseModel
 
-from bookmark_recommender.llm import LLMOutputError, call_json, extract_json, make_llm
+from bookmark_recommender.llm import LLMOutputError, call_json, extract_json, make_llm, search_text
 
 
 class Thing(BaseModel):
@@ -62,10 +62,12 @@ def test_call_json_returns_validated_model():
     assert llm.tools is None
 
 
-def test_call_json_adds_web_search_tool_when_asked():
-    llm = FakeLLM('{"name": "box", "size": 3}')
-    call(llm, web_search=True)
+def test_search_text_binds_web_search_and_returns_plain_text():
+    llm = FakeLLM("Here are some pages: https://a.com")
+    text = asyncio.run(search_text(llm, "Find pages.", "the input"))
+    assert text == "Here are some pages: https://a.com"
     assert llm.tools == [{"type": "web_search"}]
+    assert llm.calls == [[("system", "Find pages."), ("human", "the input")]]  # no JSON schema, no retry
 
 
 def test_call_json_retries_once_with_the_error():
