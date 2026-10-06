@@ -18,8 +18,19 @@ Each candidate site is scored from 1 to 5 on three criteria:
 
 A fixed LangGraph workflow. It isn't an agent, because the steps are known ahead of time:
 
-```
-fetch seed page → understand it → web search → fetch candidates → judge each candidate (in parallel) → pick top 3
+```mermaid
+flowchart TD
+    A["Seed URL + your reason"] --> B["Fetch seed page<br/>(Crawl4AI)"]
+    B --> C["Understand the seed<br/>(LLM)"]
+    C --> D["Search the web<br/>(LLM + DeepSeek web_search)"]
+    D --> E["Fetch candidate pages<br/>(Crawl4AI, in parallel)"]
+    E --> J1["Judge candidate 1<br/>(LLM)"]
+    E --> J2["Judge candidate 2<br/>(LLM)"]
+    E --> JN["Judge candidate N<br/>(LLM)"]
+    J1 --> F["Pick top 3<br/>(plain Python)"]
+    J2 --> F
+    JN --> F
+    F --> G["Up to 3 recommendations"]
 ```
 
 - **LLM:** DeepSeek through LangChain's `ChatOpenAI` (Responses API). Search uses DeepSeek's built-in `web_search` tool.
