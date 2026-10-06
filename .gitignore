@@ -152,3 +152,4 @@ cython_debug/
 search_the_web.py
 temp-code.py
 .claude/
+experiments/
