@@ -25,8 +25,9 @@ def verdict(score):
 
 
 class Fakes:
-    def __init__(self, candidates, scores, seed_ok=True, failed_fetches=(), failing_judges=(), search_answer=SEARCH_ANSWER):
-        self.candidates, self.scores, self.seed_ok = candidates, scores, seed_ok
+    def __init__(self, candidates, scores, seed_ok=True, failed_fetches=(), failing_judges=(), search_answer=SEARCH_ANSWER,
+                 seed_error="timeout"):
+        self.candidates, self.scores, self.seed_ok, self.seed_error = candidates, scores, seed_ok, seed_error
         self.failed_fetches, self.failing_judges = set(failed_fetches), set(failing_judges)
         self.search_answer = search_answer
         self.extract_inputs = []
@@ -35,7 +36,7 @@ class Fakes:
     async def fetch_page(self, url, limit):
         if url == SEED:
             return PageContent(url=url, title="Seed", markdown="seed text", ok=self.seed_ok,
-                               error=None if self.seed_ok else "timeout")
+                               error=None if self.seed_ok else self.seed_error)
         if url in self.failed_fetches:
             return PageContent(url=url, ok=False, error="403")
         return PageContent(url=url, title="page", markdown=f"content of {url}", ok=True)
@@ -103,6 +104,26 @@ def test_seed_fetch_failure_ends_turn():
     with pytest.raises(TurnError, match="timeout"):
         run(fakes)
     assert fakes.judge_inputs == []
+
+
+CRAWL4AI_ERROR = (
+    "Unexpected error in _crawl_web at line 778 in _crawl_web (../site-packages/crawl4ai/async_crawler_strategy.py):\n"
+    "Error: Failed on navigating ACS-GOTO:\n"
+    "Page.goto: net::ERR_NAME_NOT_RESOLVED at https://nonexistent.invalid-tld-xyz/\n"
+    "Code context:\n 778 →     raise RuntimeError(...)"
+)
+
+
+def test_seed_fetch_error_shows_only_the_network_code():
+    with pytest.raises(TurnError) as err:
+        run(Fakes([cand(A)], SCORES, seed_ok=False, seed_error=CRAWL4AI_ERROR))
+    assert str(err.value) == "Could not read the seed page: net::ERR_NAME_NOT_RESOLVED"
+
+
+def test_seed_fetch_error_without_code_shows_first_line():
+    with pytest.raises(TurnError) as err:
+        run(Fakes([cand(A)], SCORES, seed_ok=False, seed_error="page has no text\nmore detail"))
+    assert str(err.value) == "Could not read the seed page: page has no text"
 
 
 def test_no_candidates_ends_turn():

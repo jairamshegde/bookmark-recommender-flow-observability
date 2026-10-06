@@ -1,4 +1,5 @@
 import operator
+import re
 from dataclasses import dataclass
 from typing import Annotated, Awaitable, Callable, TypedDict
 
@@ -36,6 +37,15 @@ class State(TypedDict, total=False):
     picks: list[Judgment]
 
 
+def _short_reason(error: str | None) -> str:
+    """One line for the user; the full error stays on the crawl_page span."""
+    code = re.search(r"net::ERR_[A-Z_]+", error or "")
+    if code:
+        return code.group(0)
+    lines = (error or "").strip().splitlines()
+    return lines[0] if lines else "unknown error"
+
+
 class ScoreInput(TypedDict):
     seed_profile: SeedProfile
     candidate: Candidate
@@ -47,7 +57,7 @@ def build_graph(deps: Deps):
         with node_span():
             page = await deps.fetch_page(state["seed_url"], config.SEED_CHAR_LIMIT)
         if not page.ok:
-            raise TurnError(f"Could not read the seed page: {page.error}")
+            raise TurnError(f"Could not read the seed page: {_short_reason(page.error)}")
         return {"seed_page": page}
 
     async def understand_seed(state: State):
