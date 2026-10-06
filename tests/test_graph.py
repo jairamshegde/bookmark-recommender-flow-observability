@@ -143,6 +143,6 @@ def test_one_failing_judge_is_dropped():
     assert picked(state) == [B, C]
 
 
-def test_all_judges_failing_gives_no_picks():
-    state = run(Fakes([cand(u) for u in (A, B)], SCORES, failing_judges={A, B}))
-    assert state["picks"] == []
+def test_all_judges_failing_ends_turn_with_a_clear_message():
+    with pytest.raises(TurnError, match="Could not score any candidates"):
+        run(Fakes([cand(u) for u in (A, B)], SCORES, failing_judges={A, B}))

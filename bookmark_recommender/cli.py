@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.style import Style
+from rich.text import Text
 
 from . import config
 from .crawl import Crawler
@@ -38,15 +40,19 @@ NEXT_STEP = {
 
 
 def render_pick(rank: int, j: Judgment) -> Panel:
-    body = (
-        f"[link={j.url}]{escape(j.url)}[/link]\n\n"
-        f"[b]Relevance {j.relevance}[/b]  {escape(j.relevance_rationale)}\n"
-        f"[b]Usefulness {j.usefulness}[/b]  {escape(j.usefulness_rationale)}\n"
-        f"[b]Novelty {j.novelty}[/b]  {escape(j.novelty_rationale)}"
-    )
+    # Built as Text, not markup: model text and URLs may contain "[" or "]".
+    body = Text(j.url, style=Style(link=j.url))
+    body.append("\n")
+    for name, score, why in (
+        ("Relevance", j.relevance, j.relevance_rationale),
+        ("Usefulness", j.usefulness, j.usefulness_rationale),
+        ("Novelty", j.novelty, j.novelty_rationale),
+    ):
+        body.append(f"\n{name} {score}", style="bold")
+        body.append(f"  {why}")
     if j.content_source == "snippet":
-        body += "\n\n[dim]Judged from the search snippet: the page could not be fetched.[/dim]"
-    return Panel(body, title=f"#{rank} {escape(j.title)}", subtitle=f"R{j.relevance} U{j.usefulness} N{j.novelty}")
+        body.append("\n\nJudged from the search snippet: the page could not be fetched.", style="dim")
+    return Panel(body, title=Text(f"#{rank} {j.title}"), subtitle=f"R{j.relevance} U{j.usefulness} N{j.novelty}")
 
 
 async def run_turn(app, seed_url: str, reason: str, session_id: str) -> list[Judgment]:
@@ -60,6 +66,39 @@ async def run_turn(app, seed_url: str, reason: str, session_id: str) -> list[Jud
                 if node == "select_top3":
                     picks = output["picks"]
     return picks
+
+
+def read_turn() -> tuple[str, str] | None:
+    """Ask for the next seed URL and reason. None means quit (q, empty URL or Ctrl+D)."""
+    try:
+        while True:
+            seed_url = Prompt.ask("\n[b]Seed URL[/b] (empty or q to quit)", default="", show_default=False).strip()
+            if seed_url in ("", "q"):
+                return None
+            if seed_url.startswith(("http://", "https://")):
+                break
+            console.print("[red]The URL must start with http:// or https://[/red]")
+        reason = ""
+        while not reason:
+            reason = Prompt.ask("[b]Why is it important to you?[/b]").strip()
+        return seed_url, reason
+    except EOFError:
+        return None
+
+
+async def show_turn(app, seed_url: str, reason: str, session_id: str) -> None:
+    try:
+        picks = await run_turn(app, seed_url, reason, session_id)
+    except (TurnError, LLMOutputError, OpenAIError) as e:
+        console.print(f"[red]{escape(str(e))}[/red]")
+        return
+    except Exception as e:  # keep the session alive; the full error is in the trace
+        console.print(f"[red]Unexpected error: {escape(str(e))}[/red]")
+        return
+    for rank, j in enumerate(picks, 1):
+        console.print(render_pick(rank, j))
+    if len(picks) < 3:
+        console.print(f"[yellow]Only {len(picks)} candidate(s) passed the relevance, usefulness and novelty bar.[/yellow]")
 
 
 async def main() -> int:
@@ -77,32 +116,16 @@ async def main() -> int:
         title="Bookmark recommender",
     ))
 
-    llm = make_llm(api_key)
     try:
         async with Crawler() as crawler:
             app = build_graph(Deps(
-                call_json=partial(call_json, llm), search_text=partial(search_text, llm),
+                call_json=partial(call_json, make_llm(api_key)),
+                search_text=partial(search_text, make_llm(api_key, max_retries=0)),  # never re-run a ~180k-token search
                 fetch_page=crawler.fetch_page, fetch_many=crawler.fetch_many,
             ))
-            while True:
-                seed_url = Prompt.ask("\n[b]Seed URL[/b] (empty or q to quit)", default="", show_default=False).strip()
-                if seed_url in ("", "q"):
-                    return 0
-                if not seed_url.startswith(("http://", "https://")):
-                    console.print("[red]The URL must start with http:// or https://[/red]")
-                    continue
-                reason = ""
-                while not reason:
-                    reason = Prompt.ask("[b]Why is it important to you?[/b]").strip()
-                try:
-                    picks = await run_turn(app, seed_url, reason, session_id)
-                except (TurnError, LLMOutputError, OpenAIError) as e:
-                    console.print(f"[red]{escape(str(e))}[/red]")
-                    continue
-                for rank, j in enumerate(picks, 1):
-                    console.print(render_pick(rank, j))
-                if len(picks) < 3:
-                    console.print(f"[yellow]Only {len(picks)} candidate(s) passed the relevance, usefulness and novelty bar.[/yellow]")
+            while (turn := read_turn()) is not None:
+                await show_turn(app, *turn, session_id)
+            return 0
     finally:
         tracer_provider.shutdown()
 

@@ -13,8 +13,10 @@ class LLMOutputError(Exception):
     """The model did not return valid JSON for the schema, even after one retry."""
 
 
-def make_llm(api_key: str) -> ChatOpenAI:
+def make_llm(api_key: str, max_retries: int | None = None) -> ChatOpenAI:
+    """max_retries=None keeps the openai client default (2); use 0 for the costly web-search call."""
     return ChatOpenAI(
+        max_retries=max_retries,
         model=config.MODEL,
         api_key=api_key,
         base_url=config.DEEPSEEK_BASE_URL,

@@ -121,7 +121,10 @@ def build_graph(deps: Deps):
         return {"judgments": [judgment]}
 
     async def select_top3_node(state: State):
-        return {"picks": select_top3(state.get("judgments", []))}
+        judgments = state.get("judgments", [])
+        if not judgments:  # there were candidates, so every judge call failed
+            raise TurnError("Could not score any candidates (the model calls failed). Please try again.")
+        return {"picks": select_top3(judgments)}
 
     graph = StateGraph(State)
     graph.add_node("fetch_seed", fetch_seed)

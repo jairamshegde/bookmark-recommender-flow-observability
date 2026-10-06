@@ -16,6 +16,8 @@ RUN_CONFIG = CrawlerRunConfig(cache_mode=CacheMode.BYPASS, page_timeout=config.C
 def to_page(url: str, result, limit: int) -> PageContent:
     if not result.success:
         return PageContent(url=url, ok=False, error=result.error_message or "fetch failed")
+    if result.status_code and result.status_code >= 400:  # e.g. a normal-looking "Page not found"
+        return PageContent(url=url, ok=False, error=f"HTTP {result.status_code}")
     markdown = result.markdown.raw_markdown if result.markdown else ""
     title = (result.metadata or {}).get("title") or ""
     if not markdown.strip():

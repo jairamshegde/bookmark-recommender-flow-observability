@@ -42,6 +42,11 @@ def test_make_llm_targets_deepseek_responses_api():
     assert llm.reasoning == {"effort": "low"}
 
 
+def test_make_llm_can_turn_off_client_retries():
+    assert make_llm("test-key").root_async_client.max_retries == 2  # openai default, fine for cheap calls
+    assert make_llm("test-key", max_retries=0).root_async_client.max_retries == 0  # for the costly search call
+
+
 def test_extract_json_tolerates_fences_and_prose():
     assert extract_json('```json\n{"a": 1}\n```') == '{"a": 1}'
     assert extract_json('Sure! Here it is: {"a": {"b": 2}} Hope that helps.') == '{"a": {"b": 2}}'

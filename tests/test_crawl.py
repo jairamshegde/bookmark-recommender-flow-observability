@@ -3,9 +3,10 @@ from types import SimpleNamespace
 from bookmark_recommender.crawl import to_page
 
 
-def result(success=True, markdown="# Title\nBody text", title="A page", error=None):
+def result(success=True, markdown="# Title\nBody text", title="A page", error=None, status_code=200):
     return SimpleNamespace(
         success=success,
+        status_code=status_code,
         markdown=SimpleNamespace(raw_markdown=markdown) if markdown is not None else None,
         metadata={"title": title} if title is not None else None,
         error_message=error,
@@ -29,3 +30,8 @@ def test_to_page_empty_markdown_is_not_ok():
 
 def test_to_page_missing_metadata_gives_empty_title():
     assert to_page("https://a.com", result(title=None), limit=100).title == ""
+
+
+def test_to_page_http_error_status_is_not_ok():
+    page = to_page("https://a.com/missing", result(markdown="# Page not found\nSorry", status_code=404), limit=100)
+    assert not page.ok and page.error == "HTTP 404"
