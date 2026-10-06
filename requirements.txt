@@ -1,0 +1,11 @@
+arize-phoenix==20.11.0
+arize-phoenix-otel==0.17.1
+crawl4ai==0.9.3
+httpx==0.28.1
+langchain-openai==1.6.7
+langgraph==1.2.12
+openinference-instrumentation-langchain==0.1.76
+pydantic==2.13.4
+pytest==8.3.4
+python-dotenv==1.2.2
+rich==15.0.0
